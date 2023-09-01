@@ -17,18 +17,18 @@ ctaActionText: Alright, let’s go ->
 ctaView: bright
 ---
 
-PHP is one of the most popular programming languages for handling server-side applications of websites and web services. It includes all the functions to upload, validate and verify files uploaded from the client side. A file upload script can be made in under 5 minutes.
+PHP has excellent built-in support for handling file upload and validation logic. A basic, functional file upload script can be made in under 5 minutes.
 
-With little effort, you can create a server script that will, for example, let users upload profile pictures onto your website and stack them in one folder. The uploader itself is relatively easy, but other tasks, such as fast file delivery to a client machine through a CDN, or adding a watermark to image uploads, will require more complex solutions.
+This basic script could, for example, let users upload profile pictures onto your website and stack them in one folder. While the uploader itself is relatively easy, other tasks, such as fast file delivery to a client machine through a CDN, or adding a watermark to image uploads, will require more complex solutions. And it's also important to consider security risks and other malicious uses of the upload form.
 
 In this article, we’ll cover the following two options and reveal their pros and cons:
 
 - Upload files onto your own server and create a PHP server upload script from scratch.
 - Use a service like Uploadcare via PHP that handles uploading, storing and delivering files through a CDN (AWS).
 
-## Create a PHP file uploader on your own
+## Create a file upload in PHP on your own
 
-If you need to create a basic file uploader and you don’t expect thousands of image files flooding your server’s storage from users around the world, do it yourself. Also, this solution is good for very specific uploading tasks and closed systems (banks, defense, and government facilities) with strict policies that don’t allow file upload outsourcing to a third-party service.
+If you need to create a basic file uploader and you don’t expect thousands of image files from users around the world, it might be okay to do it yourself.
 
 ### Items
 
@@ -36,7 +36,7 @@ If you need to create a basic file uploader and you don’t expect thousands of 
 
 - Full control over the uploading process.
 - Simple (or not, depending on your requirements).
-- Free solution (provided that development costs are free on your end).
+- Free solution (provided that development and storage costs are free on your end).
 
 #### Cons
 
@@ -45,15 +45,18 @@ If you need to create a basic file uploader and you don’t expect thousands of 
 - Slower file delivery, because no CDN is involved. Setting up a CDN uploader is another task that won’t be covered in this article.
 - Takes additional resources to support and maintain the script in the future.
 - Doesn’t work for mobile apps out of the box (needs further bridging with your app’s architecture).
-- Security concerns — hackers love homemade scripts.
+- More storage needed on the server, along with a backup plan for all the user-uploaded content.
+- Security concerns — malicious files, denial of service attacks, invalid validation logic, and more.
 
 ### Prerequisites
 
-To follow along with this article, you’ll need to have a web server (Apache, nginx, etc.) with any of the recent PHP versions installed (version 7.x includes [a few Session and CURL improvements](https://www.php.net/ChangeLog-7.php) regarding file uploading).
+To follow along with this article, you need a [supported version of PHP](https://www.php.net/supported-versions.php) installed. You can either use a server like nginx and Apache, or try the demo with PHP's [built-in development server](https://www.php.net/manual/en/features.commandline.webserver.php).
 
 ### Configuring PHP
 
-Make sure that the php.ini config file allows uploading files (it’s turned on by default). Also, you can set some restrictions, such as a maximum size for an uploaded file, number of files uploaded per chunk, etc. Here is the part of this initialization file that’s related to file uploading:
+By default, PHP is configured to allow file uploading, and has sensible defaults for the maximum number of files and file sizes that can be uploaded.
+
+If you need to troubleshoot file uploading, or adjust any of the limits, you can do this in the `php.ini` configuration file. The most relevant file upload configuration options are shown here:
 
 ```ini
 ;;;;;;;;;;;;;;;;
@@ -82,21 +85,21 @@ phpinfo();
 
 And then launch it in your web browser. It’ll show you the path to the initialization file, like in the screenshot below:
 
-![Locating a php ini file](images/Screenshot_1.png)
+![Locating a php ini file](images/phpinfo-example.png)
 
-### HTML file uploading methods
+### How browsers upload files
 
-Typically, there are two general file uploading methods in the [HTML specification](https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.5): POST, which we’ll be using in this article; and PUT, which is mostly used to replace existing files with a specific resource ID, and is potentially [more dangerous](https://www.php.net/manual/en/features.file-upload.put-method.php) to use, so we’ll skip it.
+HTML provides a [`file` input type](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/file) that allows users to select a file from their local computer. This input has several attributes for configuring what types of files you want the user to be able to upload.
 
-There are two general types of file that can go via POST: **text files** and **binary files**. Image files (.jpg, .png, .gif, etc.) are binary files, so we’ll be working with that type. By the way, in HTML, this encoding type is described as a `multipart/form-data`.
+Use of the file input also requires that you set some corresponding attributes on the HTML form. Most mportantly, the `enctype` attribute needs to be `multipart/form-data` and the `method` attribute needs to be `POST`. This tells the browser that the form contains binary data, and that it should be encoded for transmission.
+
+When the user submits the form, the browser sends the file to the server using a single POST request. Depending on the user's upload connection speed and the size of the file, this upload request could take quite some time. Setting reasonable defaults will prevent the request from timing out.
 
 ### Step 1. Creating an HTML form
 
-First, we need to take care of the client-side code in HTML and create a form that’ll allow users to select files for uploading.
+First, we need to take care of the client-side code in HTML and create a form that’ll allow users to select files for uploading. We're going to keep this form very basic, but in a real world application you'd want to set attributes to limit file types, file sizes, and more.
 
-Create a `PHP-upload` project folder in the root directory of your website (e.g., `public_html`, `htdocs`, or `www`), and then create a new `index.html` file there.
-
-Copy & paste the following code into your newly created file. It features a simple form with a file select input and a submit button:
+Create a new `index.html` file within your sample web application. Copy and paste the following code into your newly created file. It features a single file select input and a submit button. We've also set up the HTML form with the proper `enctype` and `method` attributes to support binary file uploads.
 
 ```html
 <!DOCTYPE html>
@@ -111,139 +114,189 @@ Copy & paste the following code into your newly created file. It features a simp
 </html>
 ```
 
-The form `action` refers to the script that’ll take care of the upload processes on the server side. As we mentioned earlier, the data delivery method will be `POST`.
+The resulting form should look like this:
 
-`enctype` is set to `multipart/form-data`, meaning that you’re using forms that have a file upload control, and no characters are encoded.
+![Default PHP file uploader appearance](images/form-preview.png)
+
+As you can see, this form is using default styling. You’ll need to create your own CSS for the HTML uploader form to make it look nice.
+
+The form's `action` attribute refers to the script that will recieve the uploaded file and process it on the server side. We'll create this script in the next step.
 
 ### Step 2. Creating a PHP file uploading script
 
 The server script name should match the name we mentioned in the HTML. Create a folder called `uploads` in the directory of your project. It’ll store the incoming files.
 
-Copy and paste this `uploadHandling.php` script as a server-side solution for your file/image uploader.
+> [!IMPORTANT]  
+> In a production application, you should store uploaded files outside of the web root directory. This prevents users from being able to access files directly, which can expose you to security risks.
+
+Copy and paste this `uploadHandling.php` script as a server-side solution for your file/image uploader. Comments are provided to explain the basic functionality of each block of code. In this sample code, we're only allowing certain image file types to be uploaded, and we're limiting the file size to 5 megabytes.
 
 ```php
-// Config
-$currentDirectory = getcwd();
-$uploadDirectory = '/uploads/';
+<?php
+
+declare(strict_types=1);
+
+// redirect to upload form if no file has been uploaded
+if (!isset($_FILES['fileToUpload']) || $_FILES['fileToUpload']['error'] > 0) {
+    header('Location: index.html');
+    exit;
+}
+
+// configuration
+$uploadDirectory = getcwd() . '/uploads/';
 $fileExtensionsAllowed = ['jpeg', 'jpg', 'png']; // These will be the only file extensions allowed
-$fileLimitMb = 5; // File limit in MB
-$uploadOk = true;
+$mimeTypesAllowed = ['image/jpeg', 'image/png']; // These will be the only mime types allowed
+$maxFileSizeInBytes = 5_242_880; // 5 megabytes
 
-$fileName = $_FILES['fileToUpload']['name'];
-$fileSize = $_FILES['fileToUpload']['size'];
-$fileTmpName  = $_FILES['fileToUpload']['tmpName'];
-$fileType = $_FILES['fileToUpload']['type'];
-$fileExtension = strtolower(end(explode('.', $fileName)));
+// extract data about the uploaded file
+['name' => $fileName, 'tmp_name' => $fileTempName, 'type' => $fileType, 'size' => $fileSize] = $_FILES['fileToUpload'];
+['extension' => $fileExtension] = pathinfo($fileName);
 
-$uploadPath = $currentDirectory . $uploadDirectory . basename($fileName);
+$errors = [];
 
-// Check if image file is an actual image or fake image
-if (isset($_POST['submit'])) {
-  if (getimagesize($fileTmpName) !== false) {
-    echo 'File is an image - ' . $check['mime'] . '.';
-    $uploadOk = true;
-  } else {
-    echo 'File is not an image.';
-    $uploadOk = false;
-  }
+// validate the file extension is in our allow list
+if (!in_array($fileExtension, $fileExtensionsAllowed)) {
+    $errors[] = 'File must have one of the following extensions: ' . implode(', ', $fileExtensionsAllowed) . '.';
 }
 
-// Check if file already exists
-if ($uploadDirectory . basename($fileName) {
-  echo 'File already exists.';
-  $uploadOk = false;
+// validate the file is an allowed mime type based on actual contents
+$detectedType = mime_content_type($fileTempName) ?: 'unknown type';
+if (!in_array($detectedType, $mimeTypesAllowed, strict: true)) {
+    $errors[] = 'File type is unsupported: ' . $detectedType . '.';
 }
 
-// Check file size
-if ($fileSize > ($fileLimitMb * 100000)) {
-  echo 'File must be less than ' . $fileLimitMb . 'MB.';
-  $uploadOk = false;
+// validate if the file already exists
+$uploadPath = $uploadDirectory . $fileName;
+if (file_exists($uploadPath)) {
+    $errors[] = 'File already exists.';
 }
 
-/*
-// Allow certain file formats; needs to do foreach from array fileExtensionsAllowed
-if ($imageFileType != $fileExtensionsAllowed  {
-  echo 'Sorry, only JPG, JPEG, PNG & GIF files are allowed.';
-  $uploadOk = false;
-}*/
+// validate the maximum file size
+if ($fileSize > $maxFileSizeInBytes) {
+    $errors[] = 'File must not be greater than ' . number_format($maxFileSizeInBytes) . ' bytes.';
+}
 
-// Check if $uploadOk then process
-if ($uploadOk == false) {
-  echo 'File couldn\'t be uploaded.';
-} else {
-  if (move_uploaded_file($fileTmpName, $target_file)) {
-    echo 'The file ' . basename($fileName) . ' has been uploaded.';
-  } else {
-    echo 'Sorry, there was an error uploading your file.';
-  }
+// attempt to move the file, but only if there were no errors up to this point
+if (count($errors) === 0) {
+    if (move_uploaded_file($fileTempName, $uploadPath)) {
+        echo 'The file has been successfully uploaded.';
+    } else {
+        $errors[] = 'Sorry, there was an error uploading your file.';
+    }
+}
+
+// display any errors
+if (count($errors) > 0) {
+    echo '<h3>Errors:</h3>';
+    echo '<ul>';
+    foreach ($errors as $error) {
+        echo '<li>' . $error . '</li>';
+    }
+    echo '</ul>';
 }
 ```
 
-Let me break it down for you and describe the details, so we’re on the same page regarding exactly what this script does.
+When PHP receives file uploads, it populates a global `$_FILES` object with the uploaded file contents, and some file properties, such as name, size, and error status.
 
-The `$_FILES` object contains all the means of accessing a file and its properties, such as name, size, and file extension.
+The file's type is provided by the client, and should not be trusted, which is why we use PHP's built in `fileinfo` extension to determine the acutal MIME type for validation.
 
-- `$_FILES['userfile']['name']` — the original name of the file uploaded by the client.
-- `$_FILES['userfile']['type']` — the file’s MIME type (e.g., "image/gif" for images) provided by the browser.
-- `$_FILES['userfile']['size']` — the file size in bytes.
-- `$_FILES['userfile']['tmp_name']` — the name under which the newly uploaded file is put on the server before all checks are completed (e.g., if there is a file with the same name).
+We also receive both the original name of the file, as well as the temporary name PHP assigned. All uploaded files are placed into a temporary upload directory. If validation passes, and ONLY if it passes, then we move the temporary file to the desired location.
 
-We’ll include the necessary basic checks on file type (because in our case it must be a picture) and file size (e.g., less than 2MB).
+> [!IMPORTANT]  
+> For purposes of this example, we're not allowing a user to upload a file with a name that already exists. In a real production application, you'd likely sandbox user uploads per account or add additional logic to prevent overwriting existing files.
 
-Don’t forget that you can set absolute maximums for file uploads in `php.ini`. This particular script will have its own custom limits for this image uploading task.
-
-![Default PHP file uploader appearance](images/Безымянный.png)
-
-You’ll need to create your own CSS for the HTML uploader form to make it look nice. It’s not a disadvantage as it doesn’t affect functionality, but it’ll probably require some time as well.
+In regards to file size validation, don’t forget that the limits we're enforcing in this PHP script are separate from any limits enforced in the `php.ini` configuration, or in your web server configuration.
 
 ### Final thoughts on uploading with your own PHP script
 
-This script is just the tip of the iceberg. There are tons of other tasks related to the file uploading process, such as distributing files across servers for optimal delivery, image processing (e.g., crop and other effects), etc.
+This script provides a basic demonstration of simple uploading functionality. There are many other tasks related to the file uploading process to consider, such as distributing files across servers for optimal delivery, image processing (e.g., crop and other effects), malicious file detection, etc.
 
-The code above is a clear and slightly refined version of an example script that you might find with a more detailed explanation at [php.net](https://www.php.net/manual/en/features.file-upload.post-method.php), [w3schools.com](https://www.w3schools.com/php/php_file_upload.asp), and other websites. The one from this article has been tested and it’s ready to go. Plus, it includes basic checks, because it’s important not to mess up your server when making it available to the public.
-
-## Use Uploadcare to upload images
+## Use Uploadcare to upload files
 
 If you need a fast, reliable and robust solution to take care of your image uploads, simply call Uploadcare’s functions from your PHP scripts. It’ll give you more reliability, and the uploads will be completed faster.
+
+Or you can bypass PHP altogether and embed Uploadcare methods through HTML and Javascript. Either option is available.
 
 ### Items
 
 #### Pros
 
-- Super-fast setup and customizable interface.
+- Super-fast setup and optimized upload speed.
 - Works for web and mobile.
+- Professional default UI, but appearance can also be customized with CSS.
 - Manages storage and works with CDN automatically.
-- Technical support if you ever run into a problem.
-- Additional features, such as resizing, cropping images, etc.
+- Additional features, such as resizing, cropping images, inappropriate image detection, etc.
+- Stronger security protection, including virus scanning.
 - Allows users to import files from multiple sources.
-- CSS appearance can be easily customized.
+- Technical support if you ever run into a problem.
 
 #### Cons
 
-- May not work for very specific uploading procedures (API includes methods that cover almost all tasks related to image uploading).
-- Doesn’t work for large files (100 MB or more, depending [on your plan](https://uploadcare.com/pricing/)).
 - It’s not possible to get a simple on-premise installation package, so it might not work for systems that have limited Internet access.
 - The service is not free, but it offers packages that should suit most businesses’ needs and budgets.
 
-Actually, you can access Uploadcare methods through HTML/JS, so PHP isn’t necessary at all. However, Uploadcare provides you with a well-documented API that you can use from within your PHP-written backoffice.
+### Prerequisites
+Your environment will need to meet the [Uploadcare requirements](https://uploadcare.com/docs/integrations/php/#requirements) and it is recommended to use [Composer](https://getcomposer.org) to [install the Uploadcare PHP library](https://uploadcare.com/docs/integrations/php/#install).
 
-See this very detailed guide on installing Uploadcare libraries via Composer, getting API keys and switching: [Serverless File Uploads in PHP →](https://uploadcare.com/docs/guides/php/)
+After it’s done, getting your images onto the CDN server using Uploadcare is fairly straightforward, and unlocks a lot of application functionality, such as virus scanning, image detection, optimization, and more.
 
-After it’s done, getting your images onto the CDN server using Uploadcare will be as easy as these few lines of code:
+The provided Uploader widget also supports lots of advanced functionality like multiple file upload. You can also use it to upload files from an attached camera, a URL, Dropbox, Google Drive, and other sources.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
+require __DIR__.'/../vendor/autoload.php';
+
+const PUBLIC_API_KEY='YOUR_PUBLIC_API_KEY';
+const PRIVATE_API_KEY='YOUR_PRIVATE_API_KEY';
+
+// check if the uploaded file is infected
+if (isset($_POST['my-uploader'])) {
+    $config = Uploadcare\Configuration::create(PUBLIC_API_KEY, PRIVATE_API_KEY);
+    $fileApi = (new Uploadcare\Api($config))->file();
+
+    $uploadedFileId = basename($_POST['my-uploader']);
+    $file = $fileApi->fileInfo($uploadedFileId);
+    $isInfected = $file->getAppdata()->getClamAvVirusScan()->getData()->isInfected();
+
+    // any other logic here to write to database, send email notification, etc.
+}
+?>
 <!DOCTYPE html>
 <html>
 <head>
-  <script>
-    UPLOADCARE_PUBLIC_KEY = 'YOUR_PUBLIC_KEY';
-  </script>
-  <?php echo $api->widget->getScriptTag(); ?>
+    <script type="module">
+        import * as LR from "https://cdn.jsdelivr.net/npm/@uploadcare/blocks@0.25.0/web/lr-file-uploader-regular.min.js";
+
+        LR.registerBlocks(LR);
+    </script>
+
 </head>
 <body>
-<form method="POST" action="index.php">
-  <?php echo $api->widget->getInputTag('qs-file'); ?>
-  <input type="submit" value="Save!" />
+<form method="POST" action="uploadcare-demo.php">
+    <lr-config
+            ctx-name="my-uploader"
+            pubkey="<?php echo PUBLIC_API_KEY; ?>"
+            img-only="true"
+            multiple="true"
+            max-local-file-size-bytes="524288000"
+            use-cloud-image-editor="true"
+            source-list="local, url, camera, dropbox"
+    >
+    </lr-config>
+
+    <lr-file-uploader-regular
+            css-src="https://cdn.jsdelivr.net/npm/@uploadcare/blocks@0.25.4/web/lr-file-uploader-regular.min.css"
+            ctx-name="my-uploader"
+    ></lr-file-uploader-regular>
+
+    <lr-data-output
+            ctx-name="my-uploader"
+            use-input
+    ></lr-data-output>
+    <input type="submit" value="Save!" />
 </form>
 </body>
 </html>
@@ -251,7 +304,7 @@ After it’s done, getting your images onto the CDN server using Uploadcare will
 
 When you launch this code in a browser, you’ll see the widget appear, which means you can go ahead and start uploading:
 
-![Hello world example of file and image PHP uploading](images/Screenshot_3.png)
+![Hello world example of file and image PHP uploading](images/uploader-example.png)
 
 ## Transition from PHP uploader to Uploadcare
 
